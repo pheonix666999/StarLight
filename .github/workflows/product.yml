@@ -23,7 +23,9 @@ jobs:
         include:
           - os: windows-latest
             name: Windows
-          - os: macos-latest
+          # Pinned to macos-14 because the macos-15 SDK in macos-latest marks
+          # some CoreGraphics APIs used by JUCE as unavailable (hard compile error).
+          - os: macos-14
             name: macOS
 
     steps:
