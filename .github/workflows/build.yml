@@ -1,0 +1,125 @@
+name: Build Starlight Drift
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Setup CMake
+      uses: lukka/get-cmake@latest
+    
+    - name: Configure CMake
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+    
+    - name: Build
+      run: cmake --build build --config Release --parallel
+    
+    - name: List Artifacts
+      run: |
+        Get-ChildItem -Path build/StarlightDrift_artefacts -Recurse -File | Select-Object FullName
+      shell: pwsh
+    
+    - name: Upload VST3
+      uses: actions/upload-artifact@v4
+      with:
+        name: StarlightDrift-Windows-VST3
+        path: build/StarlightDrift_artefacts/Release/VST3/*.vst3
+        if-no-files-found: warn
+    
+    - name: Upload Standalone
+      uses: actions/upload-artifact@v4
+      with:
+        name: StarlightDrift-Windows-Standalone
+        path: build/StarlightDrift_artefacts/Release/Standalone/*.exe
+        if-no-files-found: warn
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Setup CMake
+      uses: lukka/get-cmake@latest
+    
+    - name: Configure CMake
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+    
+    - name: Build
+      run: cmake --build build --config Release --parallel
+    
+    - name: List Artifacts
+      run: |
+        find build/StarlightDrift_artefacts -type f -name "*.vst3" -o -name "*.component" -o -name "*.app" 2>/dev/null || true
+        ls -la build/StarlightDrift_artefacts/ || true
+    
+    - name: Upload VST3
+      uses: actions/upload-artifact@v4
+      with:
+        name: StarlightDrift-macOS-VST3
+        path: build/StarlightDrift_artefacts/Release/VST3/*.vst3
+        if-no-files-found: warn
+    
+    - name: Upload AU
+      uses: actions/upload-artifact@v4
+      with:
+        name: StarlightDrift-macOS-AU
+        path: build/StarlightDrift_artefacts/Release/AU/*.component
+        if-no-files-found: warn
+    
+    - name: Upload Standalone
+      uses: actions/upload-artifact@v4
+      with:
+        name: StarlightDrift-macOS-Standalone
+        path: build/StarlightDrift_artefacts/Release/Standalone/*.app
+        if-no-files-found: warn
+
+  release:
+    name: Create Release
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+    
+    - name: Display structure
+      run: ls -R artifacts
+    
+    - name: Create zip archives
+      run: |
+        cd artifacts
+        for dir in */; do
+          zip -r "${dir%/}.zip" "$dir"
+        done
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v0.1.0-build.${{ github.run_number }}
+        name: Starlight Drift v0.1.0 Build ${{ github.run_number }}
+        draft: false
+        prerelease: true
+        files: artifacts/*.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

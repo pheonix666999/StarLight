@@ -1,0 +1,64 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.1
+      
+    - name: Install CMake
+      uses: jwlawson/actions-setup-cmake@v1.14
+      with:
+        cmake-version: '3.22'
+        
+    - name: Configure CMake
+      run: |
+        cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
+        
+    - name: Build
+      run: |
+        cmake --build build --config Release --parallel
+        
+    - name: Upload VST3 Plugin
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: StarlightDrift-Windows-VST3
+        path: build/StarlightDrift_artefacts/Release/VST3/Starlight Drift.vst3/**
+        retention-days: 30
+        
+    - name: Upload Standalone App
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: StarlightDrift-Windows-Standalone
+        path: build/StarlightDrift_artefacts/Release/Standalone/Starlight Drift.exe
+        retention-days: 30
+        
+    - name: Upload All Artifacts (ZIP)
+      if: success()
+      run: |
+        $artifactPath = "build/StarlightDrift_artefacts/Release"
+        $zipPath = "StarlightDrift-Windows-Release.zip"
+        Compress-Archive -Path "$artifactPath\*" -DestinationPath $zipPath -Force
+      shell: pwsh
+      
+    - name: Upload Release ZIP
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: StarlightDrift-Windows-Complete
+        path: StarlightDrift-Windows-Release.zip
+        retention-days: 30

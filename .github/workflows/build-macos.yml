@@ -1,0 +1,67 @@
+name: Build macOS
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install CMake
+      run: |
+        brew install cmake
+        
+    - name: Configure CMake
+      run: |
+        cmake -S . -B build -G "Xcode" -DCMAKE_BUILD_TYPE=Release
+        
+    - name: Build
+      run: |
+        cmake --build build --config Release --parallel
+        
+    - name: Upload VST3 Plugin
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: StarlightDrift-macOS-VST3
+        path: build/StarlightDrift_artefacts/Release/VST3/Starlight Drift.vst3/**
+        retention-days: 30
+        
+    - name: Upload AU Plugin
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: StarlightDrift-macOS-AU
+        path: build/StarlightDrift_artefacts/Release/AU/Starlight Drift.component
+        retention-days: 30
+        
+    - name: Upload Standalone App
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: StarlightDrift-macOS-Standalone
+        path: build/StarlightDrift_artefacts/Release/Standalone/Starlight Drift.app
+        retention-days: 30
+        
+    - name: Upload All Artifacts (ZIP)
+      if: success()
+      run: |
+        cd build/StarlightDrift_artefacts/Release
+        zip -r ../../../../StarlightDrift-macOS-Release.zip .
+        cd ../../../../..
+        
+    - name: Upload Release ZIP
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: StarlightDrift-macOS-Complete
+        path: StarlightDrift-macOS-Release.zip
+        retention-days: 30

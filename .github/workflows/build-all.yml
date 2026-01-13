@@ -1,0 +1,125 @@
+name: Build All Platforms
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.1
+      
+    - name: Install CMake
+      uses: jwlawson/actions-setup-cmake@v1.14
+      with:
+        cmake-version: '3.22'
+        
+    - name: Configure CMake
+      run: |
+        cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
+        
+    - name: Build
+      run: |
+        cmake --build build --config Release --parallel
+        
+    - name: Create Windows Release Package
+      if: success()
+      run: |
+        $artifactPath = "build/StarlightDrift_artefacts/Release"
+        $zipPath = "StarlightDrift-Windows-Release.zip"
+        if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+        Compress-Archive -Path "$artifactPath\*" -DestinationPath $zipPath -Force
+      shell: pwsh
+      
+    - name: Upload Windows Artifacts
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: StarlightDrift-Windows
+        path: |
+          StarlightDrift-Windows-Release.zip
+          build/StarlightDrift_artefacts/Release/VST3/Starlight Drift.vst3/**
+          build/StarlightDrift_artefacts/Release/Standalone/Starlight Drift.exe
+        retention-days: 30
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install CMake
+      run: |
+        brew install cmake
+        
+    - name: Configure CMake
+      run: |
+        cmake -S . -B build -G "Xcode" -DCMAKE_BUILD_TYPE=Release
+        
+    - name: Build
+      run: |
+        cmake --build build --config Release --parallel
+        
+    - name: Create macOS Release Package
+      if: success()
+      run: |
+        cd build/StarlightDrift_artefacts/Release
+        rm -f ../../../../StarlightDrift-macOS-Release.zip
+        zip -r ../../../../StarlightDrift-macOS-Release.zip .
+        cd ../../../../..
+        
+    - name: Upload macOS Artifacts
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: StarlightDrift-macOS
+        path: |
+          StarlightDrift-macOS-Release.zip
+          build/StarlightDrift_artefacts/Release/VST3/Starlight Drift.vst3/**
+          build/StarlightDrift_artefacts/Release/AU/Starlight Drift.component/**
+          build/StarlightDrift_artefacts/Release/Standalone/Starlight Drift.app/**
+        retention-days: 30
+
+  create-release:
+    name: Create Release
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Download Windows Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: StarlightDrift-Windows
+        path: artifacts/windows
+        
+    - name: Download macOS Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: StarlightDrift-macOS
+        path: artifacts/macos
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          artifacts/windows/*
+          artifacts/macos/*
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
