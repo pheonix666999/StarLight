@@ -10,9 +10,23 @@ include(FetchContent)
 FetchContent_Declare(
   juce
   GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-  GIT_TAG 7.0.10
+  GIT_TAG 8.0.1
 )
 FetchContent_MakeAvailable(juce)
+
+# macOS compatibility settings
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS deployment version")
+    set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "macOS architectures")
+    
+    # Suppress deprecated API warnings for JUCE's internal code
+    # The actual plugin code should use modern APIs
+    add_compile_options(-Wno-deprecated-declarations)
+    
+    # Allow unavailable APIs for JUCE's internal build tools (juceaide)
+    # This is needed for macOS 15.0 compatibility until JUCE fully migrates
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=unavailable-declarations")
+endif()
 
 juce_add_plugin(StarlightDrift
   COMPANY_NAME "Starlight"
