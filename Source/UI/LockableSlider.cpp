@@ -83,17 +83,39 @@ void LockableSlider::paintOverChildren (juce::Graphics& g)
     
     // Draw value text
     juce::String valueText;
-    if (name.contains("FREQ"))
+    if (paramId == "hpFreq" || paramId == "lpFreq")
     {
         valueText = juce::String(getValue(), 0) + " Hz";
     }
-    else if (name.contains("TIME") || name.contains("PRE-DLY") || name.contains("SIZE"))
+    else if (paramId == "delayTimeMs" || paramId == "grainSizeMs" || paramId == "preDelayMs")
     {
         valueText = juce::String(getValue(), 1) + " ms";
     }
-    else if (name.contains("MIX") || name.contains("GAIN") || name.contains("OUTPUT") || name.contains("INPUT"))
+    else if (paramId == "inputGain" || paramId == "outputGain")
     {
         valueText = juce::String(getValue(), 1) + " dB";
+    }
+    else if (paramId == "mix" || paramId == "reverbMix")
+    {
+        valueText = juce::String (getValue() * 100.0, 0) + "%";
+    }
+    else if (paramId == "reverbSize" || paramId == "tone" || paramId == "shimmerAmt"
+             || paramId == "drift" || paramId == "air" || paramId == "glass"
+             || paramId == "jitter" || paramId == "spread" || paramId == "modDepth")
+    {
+        valueText = juce::String (getValue() * 100.0, 0) + "%";
+    }
+    else if (paramId == "feedback")
+    {
+        valueText = juce::String (getValue() * 100.0, 0) + "%";
+    }
+    else if (paramId == "modRate")
+    {
+        valueText = juce::String (getValue(), 2) + " Hz";
+    }
+    else if (paramId == "pitchSemi")
+    {
+        valueText = juce::String (getValue(), 1) + " st";
     }
     else
     {

@@ -6,6 +6,8 @@
 #include "DSP/GranularDelay.h"
 #include "DSP/ShimmerReverb.h"
 
+class StarlightDriftAudioProcessorEditor;
+
 class StarlightDriftAudioProcessor final : public juce::AudioProcessor
 {
 public:
@@ -37,6 +39,8 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState& getAPVTS() { return apvts; }
+    const juce::AudioBuffer<float>& getLastBuffer() const { return lastBuffer; }
+    void copyLastBuffer (juce::AudioBuffer<float>& dest) const;
     bool isParamLocked (const juce::String& paramId) const;
     void setParamLocked (const juce::String& paramId, bool locked);
 
@@ -55,8 +59,10 @@ private:
     juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>> wetLP;
     juce::dsp::Limiter<float> limiter;
 
+    juce::AudioBuffer<float> stereoBuffer;
     juce::AudioBuffer<float> wetBuffer;
+    juce::AudioBuffer<float> lastBuffer;
+    mutable juce::SpinLock lastBufferLock;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StarlightDriftAudioProcessor)
 };
-

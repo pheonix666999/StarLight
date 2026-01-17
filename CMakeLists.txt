@@ -54,6 +54,8 @@ target_sources(StarlightDrift PRIVATE
   Source/UI/LockableSlider.cpp
   Source/UI/LockableButton.h
   Source/UI/LockableButton.cpp
+  Source/UI/WaveformComponent.h
+  Source/UI/WaveformComponent.cpp
 )
 
 juce_generate_juce_header(StarlightDrift)

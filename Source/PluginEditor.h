@@ -6,8 +6,9 @@
 #include "UI/LookAndFeel.h"
 #include "UI/LockableSlider.h"
 #include "UI/LockableButton.h"
+#include "UI/WaveformComponent.h"
 
-class StarlightDriftAudioProcessorEditor final : public juce::AudioProcessorEditor
+class StarlightDriftAudioProcessorEditor final : public juce::AudioProcessorEditor, public juce::Timer
 {
 public:
     explicit StarlightDriftAudioProcessorEditor (StarlightDriftAudioProcessor&);
@@ -15,8 +16,12 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void timerCallback() override;
 
 private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
@@ -61,6 +66,12 @@ private:
     // Modulation
     LockableSlider modRate;
     LockableSlider modDepth;
+
+    // Waveform
+    WaveformComponent waveform;
+    juce::AudioBuffer<float> waveformScratch;
+    juce::Label noInputLabel;
+    int silentFrameCount = 0;
 
     // Attachments
     std::unique_ptr<SliderAttachment> attDrift, attAir, attGlass;

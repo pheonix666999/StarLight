@@ -1,5 +1,12 @@
 #include "PluginEditor.h"
 
+struct StarlightDriftAudioProcessorEditor::Impl
+{
+    juce::Label noInputLabel;
+    juce::AudioBuffer<float> waveformScratch;
+    int silentFrameCount = 0;
+};
+
 // ... ParamIDs namespace (same as before, omitted for brevity if duplicate, but must include for full file) ...
 // Actually better to include the namespace to ensure compiling.
 namespace ParamIDs
@@ -66,10 +73,15 @@ StarlightDriftAudioProcessorEditor::StarlightDriftAudioProcessorEditor (Starligh
 {
     setLookAndFeel (&lnf);
 
+    impl = std::make_unique<Impl>();
+
     for (auto* c : { &drift, &air, &glass, &mix, &output, &hpFreq, &lpFreq,
                      &inputGain, &timeMs, &feedback, &grainSize, &density, &jitter, &pitch, &spread,
                      &reverbSize, &preDelay, &tone, &shimmerAmt, &reverbMix, &modRate, &modDepth })
         addAndMakeVisible (*c);
+
+    addAndMakeVisible (waveform);
+    addAndMakeVisible (impl->noInputLabel);
 
     addAndMakeVisible (freeze);
     addAndMakeVisible (hpEnable);
@@ -139,8 +151,18 @@ StarlightDriftAudioProcessorEditor::StarlightDriftAudioProcessorEditor (Starligh
 
     setResizable (true, true);
     setResizeLimits (1000, 650, 1920, 1200);
-    // Bigger starting size "Full Screen"-ish feel
-    setSize (1400, 850);
+    // Non-fullscreen size
+    setSize (1200, 700);
+
+    impl->noInputLabel.setJustificationType (juce::Justification::centred);
+    impl->noInputLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.95f));
+    impl->noInputLabel.setColour (juce::Label::backgroundColourId, juce::Colours::black.withAlpha (0.55f));
+    impl->noInputLabel.setText ("No input detected. In Standalone: Settings → uncheck “Mute audio input”.", juce::dontSendNotification);
+    impl->noInputLabel.setVisible (false);
+
+    impl->silentFrameCount = 0;
+
+    startTimerHz (30);
 }
 
 StarlightDriftAudioProcessorEditor::~StarlightDriftAudioProcessorEditor()
@@ -195,7 +217,11 @@ void StarlightDriftAudioProcessorEditor::resized()
     auto area = getLocalBounds().reduced(24);
     area.removeFromTop(60);
 
-    auto topSection = area.removeFromTop(area.getHeight() * 0.42f);
+    auto waveformArea = area.removeFromTop(80);
+    waveform.setBounds(waveformArea.reduced(0, 10));
+    impl->noInputLabel.setBounds (waveform.getBounds().reduced (10, 18));
+
+    auto topSection = area.removeFromTop(area.getHeight() * 0.45f);
     auto bottomSection = area.reduced(0, 16);
 
     // === TOP: Drift & Macros ===
@@ -253,13 +279,42 @@ void StarlightDriftAudioProcessorEditor::resized()
     layoutKnobGrid(box3, {&modRate, &modDepth}, 1, 2);
 }
 
+void StarlightDriftAudioProcessorEditor::timerCallback()
+{
+    processor.copyLastBuffer (impl->waveformScratch);
+    waveform.setBuffer (impl->waveformScratch);
+
+    // const auto wrapper = processor.getWrapperType();
+    // if (wrapper != juce::AudioProcessor::wrapperType_Standalone)
+    // {
+    //     impl->noInputLabel.setVisible (false);
+    //     return;
+    // }
+
+    const int numSamples = impl->waveformScratch.getNumSamples();
+    if (numSamples <= 0)
+        return;
+
+    const float rmsL = impl->waveformScratch.getNumChannels() > 0 ? impl->waveformScratch.getRMSLevel (0, 0, numSamples) : 0.0f;
+    const float rmsR = impl->waveformScratch.getNumChannels() > 1 ? impl->waveformScratch.getRMSLevel (1, 0, numSamples) : rmsL;
+    const float rms = juce::jmax (rmsL, rmsR);
+
+    constexpr float silenceThreshold = 1.0e-5f;
+    if (rms < silenceThreshold)
+        ++impl->silentFrameCount;
+    else
+        impl->silentFrameCount = 0;
+
+    impl->noInputLabel.setVisible (impl->silentFrameCount >= 30);
+}
+
 void StarlightDriftAudioProcessorEditor::layoutKnobGrid (juce::Rectangle<int> area, std::initializer_list<juce::Component*> knobs, int rows, int cols)
 {
     int cellW = area.getWidth() / cols;
     int cellH = area.getHeight() / rows;
     int k = 0;
     int knobSize = juce::jmin(cellW, cellH) - 10;
-    
+
     for (auto* c : knobs)
     {
         if (c)

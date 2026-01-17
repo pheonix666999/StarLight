@@ -54,7 +54,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout StarlightDriftAudioProcessor
     params.push_back (std::make_unique<AudioParameterFloat> (ParamIDs::delayTimeMs, "Time", NormalisableRange<float> (1.0f, 2000.0f, 0.01f, 0.35f), 450.0f));
     params.push_back (std::make_unique<AudioParameterFloat> (ParamIDs::feedback, "Feedback", NormalisableRange<float> (0.0f, 0.95f, 0.0001f), 0.35f));
     params.push_back (std::make_unique<AudioParameterFloat> (ParamIDs::grainSizeMs, "Size", NormalisableRange<float> (10.0f, 250.0f, 0.01f, 0.5f), 70.0f));
-    params.push_back (std::make_unique<AudioParameterFloat> (ParamIDs::density, "Density", NormalisableRange<float> (0.2f, 40.0f, 0.01f, 0.5f), 8.0f));
+    params.push_back (std::make_unique<AudioParameterFloat> (ParamIDs::density, "Density", NormalisableRange<float> (0.2f, 40.0f, 0.01f, 0.5f), 40.0f));
     params.push_back (std::make_unique<AudioParameterFloat> (ParamIDs::jitter, "Jitter", NormalisableRange<float> (0.0f, 1.0f, 0.0001f), 0.15f));
     params.push_back (std::make_unique<AudioParameterFloat> (ParamIDs::pitchSemi, "Pitch", NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f));
     params.push_back (std::make_unique<AudioParameterFloat> (ParamIDs::spread, "Spread", NormalisableRange<float> (0.0f, 1.0f, 0.0001f), 0.35f));
@@ -66,7 +66,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout StarlightDriftAudioProcessor
     params.push_back (std::make_unique<AudioParameterChoice> (ParamIDs::shimmerPitch, "Shimmer Pitch", StringArray { "+5", "+7", "+12", "+24" }, 2));
     params.push_back (std::make_unique<AudioParameterFloat> (ParamIDs::reverbMix, "Reverb Mix", NormalisableRange<float> (0.0f, 1.0f, 0.0001f), 1.0f));
 
-    params.push_back (std::make_unique<AudioParameterFloat> (ParamIDs::mix, "Mix", NormalisableRange<float> (0.0f, 1.0f, 0.0001f), 0.5f));
+    params.push_back (std::make_unique<AudioParameterFloat> (ParamIDs::mix, "Mix", NormalisableRange<float> (0.0f, 1.0f, 0.0001f), 1.0f));
     params.push_back (std::make_unique<AudioParameterFloat> (ParamIDs::outputGain, "Output", NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f));
     params.push_back (std::make_unique<AudioParameterBool> (ParamIDs::hpEnable, "HP Enable", false));
     params.push_back (std::make_unique<AudioParameterFloat> (ParamIDs::hpFreq, "HP Freq", NormalisableRange<float> (20.0f, 20000.0f, 0.01f, 0.5f), 120.0f));
@@ -97,7 +97,9 @@ void StarlightDriftAudioProcessor::prepareToPlay (double sampleRate, int samples
     limiter.prepare (spec);
     limiter.setThreshold (-0.5f);
 
+    stereoBuffer.setSize (2, samplesPerBlock);
     wetBuffer.setSize (2, samplesPerBlock);
+    lastBuffer.setSize (2, samplesPerBlock);
 
     wetHP.prepare (spec);
     wetLP.prepare (spec);
@@ -109,8 +111,16 @@ void StarlightDriftAudioProcessor::releaseResources() {}
 
 bool StarlightDriftAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    return layouts.getMainInputChannelSet() == juce::AudioChannelSet::stereo()
-        && layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
+    const auto in = layouts.getMainInputChannelSet();
+    const auto out = layouts.getMainOutputChannelSet();
+
+    if (in.isDisabled() || out.isDisabled())
+        return false;
+
+    if (in != out)
+        return false;
+
+    return in == juce::AudioChannelSet::mono() || in == juce::AudioChannelSet::stereo();
 }
 
 double StarlightDriftAudioProcessor::getTailLengthSeconds() const
@@ -126,6 +136,12 @@ bool StarlightDriftAudioProcessor::isParamLocked (const juce::String& paramId) c
 void StarlightDriftAudioProcessor::setParamLocked (const juce::String& paramId, bool locked)
 {
     locksState.setProperty (paramId, locked, nullptr);
+}
+
+void StarlightDriftAudioProcessor::copyLastBuffer (juce::AudioBuffer<float>& dest) const
+{
+    const juce::SpinLock::ScopedLockType sl (lastBufferLock);
+    dest.makeCopyOf (lastBuffer, true);
 }
 
 void StarlightDriftAudioProcessor::updateDSPFromParams()
@@ -222,15 +238,41 @@ void StarlightDriftAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     juce::ScopedNoDenormals noDenormals;
 
     const int numSamples = buffer.getNumSamples();
-    if (buffer.getNumChannels() < 2)
+    if (numSamples <= 0)
         return;
+
+    const int totalNumInputChannels = getTotalNumInputChannels();
+    const int totalNumOutputChannels = getTotalNumOutputChannels();
+
+    for (int ch = totalNumInputChannels; ch < totalNumOutputChannels; ++ch)
+        buffer.clear (ch, 0, numSamples);
+
+    stereoBuffer.setSize (2, numSamples, false, false, true);
+    stereoBuffer.clear();
+
+    if (totalNumInputChannels > 0)
+    {
+        stereoBuffer.copyFrom (0, 0, buffer, 0, 0, numSamples);
+
+        if (totalNumInputChannels > 1)
+            stereoBuffer.copyFrom (1, 0, buffer, 1, 0, numSamples);
+        else
+            stereoBuffer.copyFrom (1, 0, buffer, 0, 0, numSamples);
+    }
+
+    // Capture input for waveform display (always stereo for the UI)
+    {
+        const juce::SpinLock::ScopedLockType sl (lastBufferLock);
+        lastBuffer.setSize (2, numSamples, false, false, true);
+        lastBuffer.makeCopyOf (stereoBuffer, true);
+    }
 
     updateDSPFromParams();
 
     wetBuffer.setSize (2, numSamples, false, false, true);
     wetBuffer.clear();
 
-    granular.process (buffer, wetBuffer);
+    granular.process (stereoBuffer, wetBuffer);
     shimmer.process (wetBuffer);
 
     const bool hpEnabled = apvts.getRawParameterValue (ParamIDs::hpEnable)->load() > 0.5f;
@@ -252,17 +294,28 @@ void StarlightDriftAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
     for (int ch = 0; ch < 2; ++ch)
     {
-        auto* dry = buffer.getWritePointer (ch);
+        auto* dry = stereoBuffer.getWritePointer (ch);
         auto* wet = wetBuffer.getReadPointer (ch);
 
         for (int i = 0; i < numSamples; ++i)
             dry[i] = (1.0f - mix) * dry[i] + mix * wet[i];
     }
 
-    buffer.applyGain (outGain);
+    stereoBuffer.applyGain (outGain);
 
-    juce::dsp::AudioBlock<float> block (buffer);
+    juce::dsp::AudioBlock<float> block (stereoBuffer);
     limiter.process (juce::dsp::ProcessContextReplacing<float> (block));
+
+    if (totalNumOutputChannels == 1)
+    {
+        buffer.copyFrom (0, 0, stereoBuffer, 0, 0, numSamples);
+        buffer.addFrom (0, 0, stereoBuffer, 1, 0, numSamples, 1.0f);
+        buffer.applyGain (0.5f);
+        return;
+    }
+
+    buffer.copyFrom (0, 0, stereoBuffer, 0, 0, numSamples);
+    buffer.copyFrom (1, 0, stereoBuffer, 1, 0, numSamples);
 }
 
 juce::AudioProcessorEditor* StarlightDriftAudioProcessor::createEditor()
