@@ -1,0 +1,87 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 22,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "mac-xcode",
+      "displayName": "macOS (Xcode)",
+      "generator": "Xcode",
+      "binaryDir": "build-xcode",
+      "cacheVariables": {
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "10.15",
+        "CMAKE_OSX_ARCHITECTURES": "x86_64;arm64"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "mac-ninja",
+      "displayName": "macOS (Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "build-ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "win-vs",
+      "displayName": "Windows (Visual Studio 2022)",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "build-vs",
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "Release"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "win-ninja",
+      "displayName": "Windows (Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "build-ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "mac-xcode",
+      "configurePreset": "mac-xcode",
+      "configuration": "Release"
+    },
+    {
+      "name": "mac-ninja",
+      "configurePreset": "mac-ninja"
+    },
+    {
+      "name": "win-vs",
+      "configurePreset": "win-vs",
+      "configuration": "Release"
+    },
+    {
+      "name": "win-ninja",
+      "configurePreset": "win-ninja"
+    }
+  ]
+}
